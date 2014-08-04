@@ -20,8 +20,9 @@
 
 package cz.romario.opensudoku.gui;
 
-import java.util.Collection;
+import java.util.*;
 
+import android.graphics.*;
 import cz.romario.opensudoku.R;
 import cz.romario.opensudoku.game.Cell;
 import cz.romario.opensudoku.game.CellCollection;
@@ -30,9 +31,6 @@ import cz.romario.opensudoku.game.SudokuGame;
 import cz.romario.opensudoku.game.CellCollection.OnChangeListener;
 import android.content.Context;
 import android.content.res.TypedArray;
-import android.graphics.Canvas;
-import android.graphics.Color;
-import android.graphics.Paint;
 import android.util.AttributeSet;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
@@ -78,11 +76,14 @@ public class SudokuBoardView extends View {
 	private int mNumberLeft;
 	private int mNumberTop;
 	private float mNoteTop;
-	private int mSectorLineWidth;
+    private PointF[][] mNotesPosition;
+    private int mSectorLineWidth;
 	private Paint mBackgroundColorSecondary;
 	private Paint mBackgroundColorReadOnly;
 	private Paint mBackgroundColorTouched;
-	private Paint mBackgroundColorSelected;
+    private Paint mBackgroundColorSelected;
+    private Paint mBackgroundColorValueMatched;
+    private Paint mBackgroundColorNotesMatched;
 
 	private Paint mCellValueInvalidPaint;
 
@@ -109,8 +110,10 @@ public class SudokuBoardView extends View {
 		mCellNotePaint = new Paint();
 		mBackgroundColorSecondary = new Paint();
 		mBackgroundColorReadOnly = new Paint();
-		mBackgroundColorTouched = new Paint();
-		mBackgroundColorSelected = new Paint();
+        mBackgroundColorTouched = new Paint();
+        mBackgroundColorSelected = new Paint();
+        mBackgroundColorValueMatched = new Paint();
+        mBackgroundColorNotesMatched = new Paint();
 
 		mCellValuePaint.setAntiAlias(true);
 		mCellValueReadonlyPaint.setAntiAlias(true);
@@ -129,7 +132,9 @@ public class SudokuBoardView extends View {
 		setBackgroundColorSecondary(a.getColor(R.styleable.SudokuBoardView_backgroundColorSecondary, NO_COLOR));
 		setBackgroundColorReadOnly(a.getColor(R.styleable.SudokuBoardView_backgroundColorReadOnly, NO_COLOR));
 		setBackgroundColorTouched(a.getColor(R.styleable.SudokuBoardView_backgroundColorTouched, Color.rgb(50, 50, 255)));
-		setBackgroundColorSelected(a.getColor(R.styleable.SudokuBoardView_backgroundColorSelected, Color.YELLOW));
+        setBackgroundColorSelected(a.getColor(R.styleable.SudokuBoardView_backgroundColorSelected, Color.YELLOW));
+        setBackgroundColorValueMatched(a.getColor(R.styleable.SudokuBoardView_backgroundColorValueMatched, Color.GREEN));
+        setBackgroundColorNotesMatched(a.getColor(R.styleable.SudokuBoardView_backgroundColorNotesMatched, Color.GREEN));
 
 		a.recycle();
 	}
@@ -199,14 +204,32 @@ public class SudokuBoardView extends View {
 		mBackgroundColorTouched.setAlpha(100);
 	}
 
-	public int getBackgroundColorSelected() {
-		return mBackgroundColorSelected.getColor();
-	}
+    public int getBackgroundColorSelected() {
+        return mBackgroundColorSelected.getColor();
+    }
 
-	public void setBackgroundColorSelected(int color) {
-		mBackgroundColorSelected.setColor(color);
-		mBackgroundColorSelected.setAlpha(100);
-	}
+    public void setBackgroundColorSelected(int color) {
+        mBackgroundColorSelected.setColor(color);
+        mBackgroundColorSelected.setAlpha(100);
+    }
+
+    public int getBackgroundColorValueMatched() {
+        return mBackgroundColorValueMatched.getColor();
+    }
+
+    public void setBackgroundColorValueMatched(int color) {
+        mBackgroundColorValueMatched.setColor(color);
+        mBackgroundColorValueMatched.setAlpha(40);
+    }
+
+    public int getBackgroundColorNotesMatched() {
+        return mBackgroundColorNotesMatched.getColor();
+    }
+
+    public void setBackgroundColorNotesMatched(int color) {
+        mBackgroundColorNotesMatched.setColor(color);
+        mBackgroundColorNotesMatched.setAlpha(30);
+    }
 
 	public void setGame(SudokuGame game) {
 		mGame = game;
@@ -367,7 +390,7 @@ public class SudokuBoardView extends View {
 		mCellValuePaint.setTextSize(cellTextSize);
 		mCellValueReadonlyPaint.setTextSize(cellTextSize);
 		mCellValueInvalidPaint.setTextSize(cellTextSize);
-		mCellNotePaint.setTextSize(mCellHeight / 3.0f);
+		mCellNotePaint.setTextSize(mCellWidth / 3.0f);
 		// compute offsets in each cell to center the rendered number
 		mNumberLeft = (int) ((mCellWidth - mCellValuePaint.measureText("9")) / 2);
 		mNumberTop = (int) ((mCellHeight - mCellValuePaint.getTextSize()) / 2);
@@ -376,6 +399,7 @@ public class SudokuBoardView extends View {
 		mNoteTop = mCellHeight / 50.0f;
 
 		computeSectorLineWidth(width, height);
+        computerNotesPosition(mCellWidth, mCellHeight);
 	}
 
 	private void computeSectorLineWidth(int widthInPx, int heightInPx) {
@@ -391,6 +415,56 @@ public class SudokuBoardView extends View {
 
 		mSectorLineWidth = (int) (sectorLineWidthInDip * dipScale);
 	}
+
+    private void computerNotesPosition(float cellWidth, float cellHeight) {
+        mNotesPosition = new PointF[6][6];
+
+        float noteWidth = mCellNotePaint.measureText("9");
+        float noteHeight = mCellNotePaint.descent() - mCellNotePaint.ascent();
+        float spaceW, spaceH, spaceW2;
+
+        // total 1
+        spaceW = (cellWidth - noteWidth) / 2f;
+        spaceH = (cellHeight - noteHeight) / 2f;
+        mNotesPosition[0][0] = new PointF(spaceW,                        spaceH);
+
+        // total 2
+        spaceW = (cellWidth - noteWidth * 2f) / 3f;
+        mNotesPosition[1][0] = new PointF(spaceW,                        spaceH);
+        mNotesPosition[1][1] = new PointF(spaceW * 2f + noteWidth,       spaceH);
+
+        // total 3
+        spaceW = (cellWidth - noteWidth) / 2f;
+        spaceH = (cellHeight - noteHeight * 2f) / 3f;
+        spaceW2 = (cellWidth - noteWidth * 2f) / 3f;
+        mNotesPosition[2][0] = new PointF(spaceW,                        spaceH);
+        mNotesPosition[2][1] = new PointF(spaceW2,                       spaceH * 2f + noteHeight);
+        mNotesPosition[2][2] = new PointF(spaceW2 * 2f + noteWidth,      spaceH * 2f + noteHeight);
+
+        // total 4
+        spaceW = (cellWidth - noteWidth * 2f) / 3f;
+        mNotesPosition[3][0] = new PointF(spaceW,                        spaceH);
+        mNotesPosition[3][1] = new PointF(spaceW * 2f + noteWidth,       spaceH);
+        mNotesPosition[3][2] = new PointF(spaceW2,                       spaceH * 2f + noteHeight);
+        mNotesPosition[3][3] = new PointF(spaceW2 * 2f + noteWidth,      spaceH * 2f + noteHeight);
+
+        // total 5
+        spaceW2 = (cellWidth - noteWidth * 3f) / 4f;
+        mNotesPosition[4][0] = new PointF(spaceW,                        spaceH);
+        mNotesPosition[4][1] = new PointF(spaceW * 2f + noteWidth,       spaceH);
+        mNotesPosition[4][2] = new PointF(spaceW2,                       spaceH * 2f + noteHeight);
+        mNotesPosition[4][3] = new PointF(spaceW2 * 2f + noteWidth,      spaceH * 2f + noteHeight);
+        mNotesPosition[4][4] = new PointF(spaceW2 * 3f + noteWidth * 2f, spaceH * 2f + noteHeight);
+
+        // total 6
+        spaceW = (cellWidth - noteWidth * 3f) / 4f;
+        mNotesPosition[5][0] = new PointF(spaceW,                        spaceH);
+        mNotesPosition[5][1] = new PointF(spaceW * 2f + noteWidth,       spaceH);
+        mNotesPosition[5][2] = new PointF(spaceW * 3f + noteWidth * 2f,  spaceH);
+        mNotesPosition[5][3] = new PointF(spaceW2,                       spaceH * 2f + noteHeight);
+        mNotesPosition[5][4] = new PointF(spaceW2 * 2f + noteWidth,      spaceH * 2f + noteHeight);
+        mNotesPosition[5][5] = new PointF(spaceW2 * 3f + noteWidth * 2f, spaceH * 2f + noteHeight);
+    }
 
 	@Override
 	protected void onDraw(Canvas canvas) {
@@ -422,7 +496,6 @@ public class SudokuBoardView extends View {
 
 			float numberAscent = mCellValuePaint.ascent();
 			float noteAscent = mCellNotePaint.ascent();
-			float noteWidth = mCellWidth / 3f;
 			for (int row = 0; row < 9; row++) {
 				for (int col = 0; col < 9; col++) {
 					Cell cell = mCells.getCell(row, col);
@@ -454,13 +527,24 @@ public class SudokuBoardView extends View {
 								cellValuePaint);
 					} else {
 						if (!cell.getNote().isEmpty()) {
-							Collection<Integer> numbers = cell.getNote().getNotedNumbers();
+                            Set<Integer> numbersSet = cell.getNote().getNotedNumbers();
+                            List<Integer> numbers = new ArrayList<Integer>(numbersSet);
+                            Collections.sort(numbers);
+
+                            int idx = 0;
+                            PointF[] notesPosition = mNotesPosition[Math.min(numbers.size() - 1, mNotesPosition.length - 1)];
 							for (Integer number : numbers) {
-								int n = number - 1;
-								int c = n % 3;
-								int r = n / 3;
 								//canvas.drawText(Integer.toString(number), cellLeft + c*noteWidth + 2, cellTop + noteAscent + r*noteWidth - 1, mNotePaint);
-								canvas.drawText(Integer.toString(number), cellLeft + c * noteWidth + 2, cellTop + mNoteTop - noteAscent + r * noteWidth - 1, mCellNotePaint);
+                                //canvas.drawText(Integer.toString(number), cellLeft + c * noteWidth + 2, cellTop + mNoteTop - noteAscent + r * noteWidth - 1, mCellNotePaint);
+
+                                float x = cellLeft + notesPosition[idx].x;
+                                float y = cellTop + notesPosition[idx].y;
+
+                                canvas.drawText(Integer.toString(number), x, y + mNoteTop - noteAscent, mCellNotePaint);
+
+                                idx++;
+                                if (idx >= notesPosition.length)
+                                    break;
 							}
 						}
 					}
@@ -495,6 +579,56 @@ public class SudokuBoardView extends View {
 			}
 
 		}
+
+        if (null != mSelectedCell) {
+            int value = mSelectedCell.getValue();
+            if (value > 0) {
+                for (int row = 0; row < CellCollection.SUDOKU_SIZE; row++) {
+                    for (int col = 0; col < CellCollection.SUDOKU_SIZE; col++) {
+                        Cell cell = mCells.getCell(row, col);
+
+                        Paint color = null;
+
+                        if (value == cell.getValue())
+                            color = mBackgroundColorValueMatched;
+                        if (0 == cell.getValue() && cell.getNote().getNotedNumbers().contains(value))
+                            color = mBackgroundColorNotesMatched;
+
+                        if (null != color) {
+                            cellLeft = Math.round(cell.getColumnIndex() * mCellWidth) + paddingLeft;
+                            cellTop = Math.round(cell.getRowIndex() * mCellHeight) + paddingTop;
+                            canvas.drawRect(
+                                    cellLeft, cellTop,
+                                    cellLeft + mCellWidth, cellTop + mCellHeight,
+                                    color);
+                        }
+                    }
+                }
+            }
+        }
+
+        if (null != mTouchedCell) {
+            int value = mTouchedCell.getValue();
+            if (value > 0)
+            {
+                for (int row = 0; row < CellCollection.SUDOKU_SIZE; row++) {
+                    for (int col = 0; col < CellCollection.SUDOKU_SIZE; col++) {
+                        Cell cell = mCells.getCell(row, col);
+                        boolean available = cell.getHint().isAvailable(value);
+
+                        if (!available || !cell.isEditable()) {
+                            cellLeft = Math.round(cell.getColumnIndex() * mCellWidth) + paddingLeft;
+                            cellTop = Math.round(cell.getRowIndex() * mCellHeight) + paddingTop;
+
+                            canvas.drawRect(
+                                    cellLeft, cellTop,
+                                    cellLeft + mCellWidth, cellTop + mCellHeight,
+                                    mBackgroundColorTouched);
+                        }
+                    }
+                }
+            }
+        }
 
 		// draw vertical lines
 		for (int c = 0; c <= 9; c++) {
